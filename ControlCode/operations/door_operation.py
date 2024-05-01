@@ -31,19 +31,24 @@ exit_event = multiprocessing.Event()
 def door_operation(action):
     global exit_event
     global threads
+    
     if action == 'open':
         door_operation('stop')
 
         open_thread = multiprocessing.Process(target=front_door.open_door_multithreading, args=(exit_event, percent_publisher))
         open_thread.start()
         threads.append(open_thread)
+        
     elif action == 'close':
         door_operation('stop') 
 
         close_thread = multiprocessing.Process(target=front_door.close_door_multithreading, args=(exit_event, percent_publisher))
         close_thread.start()
         threads.append(close_thread)
+        
     elif action == 'stop':
+        # global CURRENT_COUNT
+        
         front_door.stop_door()
 
         exit_event.set()
@@ -53,6 +58,8 @@ def door_operation(action):
         
         exit_event = multiprocessing.Event()
         threads = []
+        # CURRENT_COUNT = 0
+        
     elif action == 'query_state':
         mqtt_connect.publish("door", str(front_door.percent_open))
     else:
@@ -65,27 +72,34 @@ def door_collision_isr():
 #door_limit_switch = limit_switch.LimitSwitch(limit_isr=door_collision_isr)
 
 # * ------------------------------Mqtt Connection-----------------------------------
+CURRENT_SENSOR_ENABLED = True
 
 def on_message_main(self, client, msg):
+    global CURRENT_SENSOR_ENABLED
+    if msg.topic == 'current_sensor' and msg.payload.decode("utf-8") == 'off':
+        CURRENT_SENSOR_ENABLED = False
+    elif msg.topic == 'current_sensor' and msg.payload.decode("utf-8") == 'on':
+        CURRENT_SENSOR_ENABLED = True
     if msg.topic == 'door_request' or msg.topic == "door":
         door_operation(msg.payload.decode("utf-8"))
                   
-mqtt_connect = mqtt_connection.MQTT_Connection(type='both', topics = ['door', 'door_request'], on_message=on_message_main)
+mqtt_connect = mqtt_connection.MQTT_Connection(type='both', topics = ['door', 'door_request', 'current_sensor'], on_message=on_message_main)
 
 # * ------------------------------Motor Current-----------------------------------
 CURRENT_COUNT = 0
 
 def current_isr(temp_arg):
     global CURRENT_COUNT
-    
-    if CURRENT_COUNT > 4:
-        door_operation('stop')
-        print("isr called for collision - current")
-        mqtt_connect.publish('alert', 'Object Blocking Door')
-        CURRENT_COUNT = 0
-    else:
-        mqtt_connect.publish('alert', f'Current Trigger: {CURRENT_COUNT}')
-        CURRENT_COUNT += 1
+    global CURRENT_SENSOR_ENABLED
+
+    if CURRENT_SENSOR_ENABLED:
+        if CURRENT_COUNT > 4:
+            door_operation('stop')
+            print("isr called for collision - current")
+            mqtt_connect.publish('alerts', 'Object Blocking Door')
+            CURRENT_COUNT = 0
+        else:
+            CURRENT_COUNT += 1
 
 current_detect = motor_current.MotorCurrent(isr=current_isr)
 
