@@ -84,6 +84,7 @@ def current_isr(temp_arg):
         mqtt_connect.publish('alert', 'Object Blocking Door')
         CURRENT_COUNT = 0
     else:
+        mqtt_connect.publish('alert', f'Current Trigger: {CURRENT_COUNT}')
         CURRENT_COUNT += 1
 
 current_detect = motor_current.MotorCurrent(isr=current_isr)
